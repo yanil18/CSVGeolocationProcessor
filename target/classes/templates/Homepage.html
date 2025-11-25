@@ -1,0 +1,183 @@
+
+<!DOCTYPE html>
+<html lang="en"  xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Geolocation Processor</title>
+    <link rel="stylesheet" th:href="@{/CSS/Homepage.css}">
+</head>
+<body>
+    <div class="container">
+        <h1>🗺️ CSV Geolocation Processor</h1>
+        <p class="subtitle">Add latitude & longitude to your IP addresses</p>
+        
+        <div class="error-message" id="errorMessage"></div>
+        
+        <form id="uploadForm" enctype="multipart/form-data">
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">📁</div>
+                <div class="upload-text">Click to browse or drag & drop</div>
+                <div class="upload-hint">CSV file with 'lastip' column required</div>
+                <input type="file" name="file" id="fileInput" accept=".csv" required>
+            </div>
+            
+            <div class="file-info" id="fileInfo">
+                <div class="file-name" id="fileName"></div>
+            </div>
+            
+            <button type="submit" id="submitBtn" disabled>
+                📤 Process & Download
+            </button>
+        </form>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <div class="loading-text">Processing your CSV...</div>
+            <p style="color: #999; font-size: 13px; margin-top: 10px;">
+                This may take a few moments depending on file size
+            </p>
+        </div>
+        
+        <div class="requirements">
+            <h3>📋 Requirements</h3>
+            <ul>
+                <li>CSV must contain a column named <strong>'lastip'</strong></li>
+                <li>Output adds <strong>latitude</strong> & <strong>longitude</strong> columns</li>
+                <li>Processing time: ~150ms per IP address</li>
+                <li>Large files may take several minutes</li>
+            </ul>
+        </div>
+    </div>
+    
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const submitBtn = document.getElementById('submitBtn');
+        const uploadForm = document.getElementById('uploadForm');
+        const loading = document.getElementById('loading');
+        const errorMessage = document.getElementById('errorMessage');
+        
+        // Click to upload
+        uploadArea.addEventListener('click', () => fileInput.click());
+        
+        // File selection
+        fileInput.addEventListener('change', handleFileSelect);
+        
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (file) {
+                if (!file.name.endsWith('.csv')) {
+                    showError('Please select a CSV file');
+                    fileInput.value = '';
+                    return;
+                }
+                fileName.textContent = '📄 ' + file.name;
+                fileInfo.classList.add('show');
+                submitBtn.disabled = false;
+                errorMessage.classList.remove('show');
+            }
+        }
+        
+        // Drag and drop
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                fileInput.files = files;
+                handleFileSelect({ target: { files: files } });
+            }
+        });
+        
+        // Form submission with fetch API
+        uploadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            
+            // Show loading
+            submitBtn.disabled = true;
+            loading.classList.add('show');
+            uploadForm.style.display = 'none';
+            errorMessage.classList.remove('show');
+            
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (response.ok) {
+                    // Check if response is CSV or error text
+                    const contentType = response.headers.get('content-type');
+                    
+                    if (contentType && contentType.includes('text/csv')) {
+                        // Success - download file
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'processed_' + fileInput.files[0].name;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                        
+                        // Reset form
+                        setTimeout(() => {
+                            loading.classList.remove('show');
+                            uploadForm.style.display = 'block';
+                            uploadForm.reset();
+                            fileInfo.classList.remove('show');
+                            submitBtn.disabled = true;
+                            showError('✅ File processed successfully!', true);
+                        }, 1000);
+                    } else {
+                        // Error message
+                        const text = await response.text();
+                        showError(text);
+                        loading.classList.remove('show');
+                        uploadForm.style.display = 'block';
+                    }
+                } else {
+                    const text = await response.text();
+                    showError(text || 'Error processing file');
+                    loading.classList.remove('show');
+                    uploadForm.style.display = 'block';
+                }
+            } catch (error) {
+                showError('Network error: ' + error.message);
+                loading.classList.remove('show');
+                uploadForm.style.display = 'block';
+            }
+        });
+        
+        function showError(message, isSuccess = false) {
+            errorMessage.textContent = message;
+            errorMessage.style.background = isSuccess ? '#e8f5e9' : '#ffebee';
+            errorMessage.style.color = isSuccess ? '#2e7d32' : '#c62828';
+            errorMessage.classList.add('show');
+            
+            if (isSuccess) {
+                setTimeout(() => {
+                    errorMessage.classList.remove('show');
+                }, 5000);
+            }
+        }
+    </script>
+</body>
+</html>
